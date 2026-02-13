@@ -1,0 +1,7 @@
+.docs
+.pnpm-store
+.rollup.cache
+node_modules
+dist
+dist-without-fix
+dist-with-fix
