@@ -1,20 +1,25 @@
 # @rollup/plugin-typescript Bug Reproduction
 
-This package demonstrates a bug in `@rollup/plugin-typescript` where the plugin's `DEFAULT_COMPILER_OPTIONS` incorrectly overrides `module` settings inherited via `extends` in `tsconfig.json`.
+This package demonstrates a bug in [@rollup/plugin-typescript](https://github.com/rollup/plugins/tree/master/packages/typescript) where the plugin's `DEFAULT_COMPILER_OPTIONS` incorrectly overrides `module` settings inherited via `extends` in `tsconfig.json`.
 
 ## The Bug
 
-When your `tsconfig.json` inherits `module` and `moduleResolution` from a base config via `extends`, the plugin emits a spurious warning:
+The plugin docs say:
+
+> The plugin loads any compilerOptions from the tsconfig.json file by default. Passing options to the plugin directly overrides those options. ([source](https://github.com/rollup/plugins/tree/master/packages/typescript#options)).
+
+This isn't always the case. When your `tsconfig.json` inherits `module` and `moduleResolution` from a "base" config via `extends`, the plugin emits a spurious warning:
 
 ```
-[plugin typescript] TS5110: Option 'module' must be set to 'NodeNext' when option 'moduleResolution' is set to 'NodeNext'.
+[plugin typescript] TS5110: Option 'module' must be set to 'NodeNext' when
+                    option 'moduleResolution' is set to 'NodeNext'.
 ```
 
 ### Root Cause
 
 In `src/options/tsconfig.ts`, the plugin merges configs like this:
 
-```typescript
+```ts
 ts.parseJsonConfigFileContent({
   ...tsConfigFile,
   compilerOptions: {
@@ -37,8 +42,8 @@ The problem: `tsConfigFile.compilerOptions` only contains values **literally def
 ### File Structure
 
 ```
-tsconfig.base.json      # Has module: "nodenext", moduleResolution: "nodenext"
-tsconfig.json           # Extends tsconfig.base.json (no module setting)
+tsconfig.base.json            # Has module: "nodenext", moduleResolution: "nodenext"
+tsconfig.json                 # Extends tsconfig.base.json (no module setting)
 rollup.config.without-fix.ts  # Triggers the bug
 rollup.config.with-fix.ts     # Workaround: explicitly pass compilerOptions
 ```
@@ -65,12 +70,10 @@ node test-type-resolution.cjs
 
 ### Expected Results: Type Resolution Test
 
-```
-| Setting          | js-yaml types     | ES2022 Error lib | Diagnostics |
-|------------------|-------------------|------------------|-------------|
-| ESNext/Bundler   | index.d.mts       | NO ❌             | 1           |
-| NodeNext         | index.d.ts        | YES ✅            | 0           |
-```
+| Setting        | js-yaml types | ES2022 Error lib | Diagnostics |
+| -------------- | ------------- | ---------------- | ----------- |
+| ESNext/Bundler | index.d.mts   | NO ❌            | 1           |
+| NodeNext       | index.d.ts    | YES ✅           | 0           |
 
 This demonstrates:
 
@@ -82,15 +85,15 @@ This demonstrates:
 
 Explicitly pass `module` and `moduleResolution` to the TypeScript plugin:
 
-```typescript
+```ts
 import typescript from '@rollup/plugin-typescript'
 
 export default {
   plugins: [
     typescript({
       compilerOptions: {
-        module: 'NodeNext',
-        moduleResolution: 'NodeNext',
+        module: 'nodenext',
+        moduleResolution: 'nodenext',
       },
     }),
   ],
@@ -110,7 +113,7 @@ Beyond the warning, this bug can cause **incorrect type checking** due to differ
 
 ### Example
 
-```typescript
+```ts
 // This may fail type-checking with ESNext module (wrong libs loaded)
 throw new Error('Failed', { cause: originalError })
 // Error: Expected 0-1 arguments, but got 2
@@ -122,7 +125,7 @@ throw new Error('Failed', { cause: originalError })
 
 Packages with conditional type exports (like `@types/js-yaml`) may resolve to different `.d.ts` files:
 
-```json
+```jsonc
 // @types/js-yaml/package.json
 {
   "exports": {
@@ -160,7 +163,7 @@ The plugin should either:
 
 2. **Move defaults to the 4th parameter** of `parseJsonConfigFileContent` (existingOptions), which has lower precedence:
 
-   ```typescript
+   ```ts
    ts.parseJsonConfigFileContent(
      tsConfigFile, // Let extends resolve naturally
      ts.sys,
